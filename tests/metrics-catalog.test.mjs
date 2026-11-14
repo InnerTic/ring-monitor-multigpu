@@ -95,6 +95,35 @@ test('applyMergedTempMode: both cpu and gpu can be merged simultaneously', () =>
     );
 });
 
+// ── applyMergedRamSwapMode ────────────────────────────────────────────
+
+test('applyMergedRamSwapMode: no merge flag → list returned untouched (copy)', () => {
+    const input = ['ram', 'swap'];
+    const out = Catalog.applyMergedRamSwapMode(input, false);
+    assert.deepEqual(out, input);
+    assert.notEqual(out, input, 'must return a fresh array, not the input reference');
+});
+
+test('applyMergedRamSwapMode: swap dropped when mergeRamSwap + both ram & swap enabled', () => {
+    assert.deepEqual(
+        Catalog.applyMergedRamSwapMode(['cpu', 'ram', 'swap', 'disk'], true),
+        ['cpu', 'ram', 'disk']
+    );
+});
+
+test('applyMergedRamSwapMode: merge flag does nothing when ram or swap is missing', () => {
+    assert.deepEqual(Catalog.applyMergedRamSwapMode(['swap', 'cpu'], true), ['swap', 'cpu']);
+    assert.deepEqual(Catalog.applyMergedRamSwapMode(['ram', 'cpu'], true), ['ram', 'cpu']);
+});
+
+test('applyMergedRamSwapMode: keeps order of the remaining ids', () => {
+    assert.deepEqual(
+        Catalog.applyMergedRamSwapMode(['swap', 'ram', 'swap'], true),
+        ['ram'],
+        'every swap occurrence is removed, ram position preserved'
+    );
+});
+
 // ── isSplitForBase ────────────────────────────────────────────────────
 
 test('isSplitForBase: cpu ring goes split when mergeCpuTemp + both enabled', () => {

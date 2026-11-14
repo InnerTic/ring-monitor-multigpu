@@ -74,6 +74,9 @@ ColumnLayout {
     property bool showCpuCores: false
     property bool mergeCpuTemp: false
     property bool mergeGpuTemp: false
+    // Nest swap inside the ram ring (equal-thickness inner ring) instead of
+    // rendering it as a standalone gauge. Only engages when both are enabled.
+    property bool mergeRamSwap: false
     property bool splitDiskIo: false
     property bool splitNet: false
     // Render one GPU ring per discovered GPU instead of a single aggregate
@@ -149,6 +152,8 @@ ColumnLayout {
             body.mergeCpuTemp = false;
         if (!on && id === "gpu" && body.mergeGpuTemp)
             body.mergeGpuTemp = false;
+        if (!on && id === "ram" && body.mergeRamSwap)
+            body.mergeRamSwap = false;
         _flushStaged();
     }
 
@@ -375,6 +380,8 @@ ColumnLayout {
                         return gpuDevicesToggle;
                     if (_metricId === "gpuTemp")
                         return gpuTempMergeToggle;
+                    if (_metricId === "swap")
+                        return ramSwapMergeToggle;
                     if (_metricId === "disk")
                         return diskPartitionsPicker;
                     if (_metricId === "diskIo")
@@ -476,6 +483,19 @@ ColumnLayout {
                 body.mergeGpuTemp = checked;
                 if (checked && !body.isEnabled("gpu"))
                     body.setEnabled("gpu", true);
+            }
+        }
+    }
+
+    Component {
+        id: ramSwapMergeToggle
+        QQC2.CheckBox {
+            text: qsTr("Nest inside the RAM ring (inner ring)")
+            checked: body.mergeRamSwap
+            onClicked: {
+                body.mergeRamSwap = checked;
+                if (checked && !body.isEnabled("ram"))
+                    body.setEnabled("ram", true);
             }
         }
     }

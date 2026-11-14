@@ -36,6 +36,9 @@ Item {
     readonly property bool showCpuCores: Plasmoid.configuration.showCpuCores
     readonly property bool mergeCpuTemp: Plasmoid.configuration.mergeCpuTemp
     readonly property bool mergeGpuTemp: Plasmoid.configuration.mergeGpuTemp
+    // `=== true` so a widget upgraded from a schema without this key reads
+    // false instead of undefined (same guard as splitNet below).
+    readonly property bool mergeRamSwap: Plasmoid.configuration.mergeRamSwap === true
     readonly property bool splitDiskIo: Plasmoid.configuration.splitDiskIo
     // `=== true` (not a raw read) so a pre-net widget schema that hasn't
     // materialised the key yet reads false instead of undefined (QML rejects

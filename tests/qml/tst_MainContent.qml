@@ -33,6 +33,7 @@ Item {
         property int ringSpacingPercent: 7
         property bool mergeCpuTemp: false
         property bool mergeGpuTemp: false
+        property bool mergeRamSwap: false
         property string tempUnit: "celsius"
         property real textOpacity: 1.0
         property real trackOpacity: 0.2
@@ -117,6 +118,7 @@ Item {
             configStub.mergeCpuTemp = false;
             configStub.mergeGpuTemp = false;
             configStub.splitDiskIo = false;
+            configStub.mergeRamSwap = false;
             metricsStub.diskIoSamplingActive = false;
             metricsStub.processSamplingActive = false;
             metricsStub.memTotalKb = 0;
@@ -265,6 +267,36 @@ Item {
             metricsStub.availableMetrics = null;
             tryCompare(content, "count", 3);
             compare(content.enabledList, ["cpu", "ram", "gpu"]);
+        }
+
+        // ── RAM/SWAP merge ──────────────────────────────────────────
+        //
+        // mergeRamSwap nests swap inside the ram ring (equal-thickness
+        // concentric rings), so the standalone swap ring drops from the
+        // strip. With either metric absent the merge no-ops.
+
+        function test_ramSwapMerge_drops_swap_ring() {
+            configStub.enabledMetrics = "cpu,ram,swap";
+            configStub.metricOrder = "cpu,ram,swap";
+            configStub.mergeRamSwap = true;
+            tryCompare(content, "count", 2);
+            compare(content.enabledList, ["cpu", "ram"]);
+        }
+
+        function test_ramSwapMerge_noop_without_swap() {
+            configStub.enabledMetrics = "cpu,ram";
+            configStub.metricOrder = "cpu,ram";
+            configStub.mergeRamSwap = true;
+            tryCompare(content, "count", 2);
+            compare(content.enabledList, ["cpu", "ram"]);
+        }
+
+        function test_ramSwapMerge_off_keeps_swap_ring() {
+            configStub.enabledMetrics = "cpu,ram,swap";
+            configStub.metricOrder = "cpu,ram,swap";
+            configStub.mergeRamSwap = false;
+            tryCompare(content, "count", 3);
+            compare(content.enabledList, ["cpu", "ram", "swap"]);
         }
 
         // ── Process sampling gate: delegate-destroy-while-hovered (#70) ──

@@ -209,6 +209,29 @@ function applyMergedTempMode(enabledIds, mergeCpuTemp, mergeGpuTemp) {
     return out;
 }
 
+// Drop swap from the displayed list when the user asked to nest it inside
+// the RAM ring AND both metrics are enabled. The RAM ring then renders two
+// equal-thickness concentric rings (outer ram, inner swap) — same layout as
+// disk multi-partition rings. With either side missing the list is returned
+// untouched (a merge with nothing to merge into stays a standalone ring).
+function applyMergedRamSwapMode(enabledIds, mergeRamSwap) {
+    if (!mergeRamSwap) return enabledIds.slice();
+    var hasRam = false;
+    var hasSwap = false;
+    for (var i = 0; i < enabledIds.length; i++) {
+        if (enabledIds[i] === "ram") hasRam = true;
+        if (enabledIds[i] === "swap") hasSwap = true;
+    }
+    if (!hasRam || !hasSwap) return enabledIds.slice();
+    var out = [];
+    for (var j = 0; j < enabledIds.length; j++) {
+        if (enabledIds[j] === "swap") continue;
+        out.push(enabledIds[j]);
+    }
+    return out;
+}
+
+
 // Expand the `gpu` / `gpuTemp` catalog ids into one ring per discovered GPU
 // when splitGpuDevices is on AND the backend reports >=2 devices. A
 // single-GPU box keeps the aggregate rings — a per-device split of one ring
@@ -399,6 +422,7 @@ if (typeof module !== "undefined" && module.exports) {
         isRateMetric: isRateMetric,
         mergeWithCatalog: mergeWithCatalog,
         applyMergedTempMode: applyMergedTempMode,
+        applyMergedRamSwapMode: applyMergedRamSwapMode,
         expandGpuDevices: expandGpuDevices,
         isGpuUsageId: isGpuUsageId,
         isGpuTempId: isGpuTempId,

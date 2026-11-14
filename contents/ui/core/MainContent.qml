@@ -68,7 +68,12 @@ GridLayout {
     // aggregate ring first, and gated on gpuDeviceIds ([] until discovery
     // settles) so the split only engages with real device data.
     readonly property var _expandedEnabledList: Catalog.expandGpuDevices(content._availableEnabledList, content.configStore.splitGpuDevices === true, content.metrics.gpuDeviceIds || [])
-    readonly property var enabledList: Catalog.applyMergedTempMode(content._expandedEnabledList, content.configStore.mergeCpuTemp, content.configStore.mergeGpuTemp)
+    // Temp merges first (cpuTemp→cpu, gpuTemp→gpu), then the RAM/SWAP merge
+    // drops the standalone swap ring — the ram delegate below nests swap as
+    // its inner ring instead. Applied last so it sees the final id list.
+    readonly property var _tempMergedList: Catalog.applyMergedTempMode(content._expandedEnabledList, content.configStore.mergeCpuTemp, content.configStore.mergeGpuTemp)
+    readonly property bool _ramSwapMerged: content.configStore.mergeRamSwap === true && content._tempMergedList.indexOf("ram") !== -1 && content._tempMergedList.indexOf("swap") !== -1
+    readonly property var enabledList: Catalog.applyMergedRamSwapMode(content._tempMergedList, content._ramSwapMerged)
     readonly property bool vertical: content.configStore.orientation === "vertical"
     readonly property int count: Math.max(1, content.enabledList.length)
 
@@ -234,6 +239,17 @@ GridLayout {
                     return content.metrics.partitionValue(id);
                 });
             }
+            // RAM/SWAP merge: the ram delegate renders two equal-thickness
+            // concentric rings (outer ram, inner swap) and the standalone swap
+            // ring is dropped from the strip (see enabledList above). Empty
+            // for every other ring → normal single-arc path below.
+            readonly property var _ramSwapValues: {
+                if (!(ringDelegate.modelData === "ram" && content._ramSwapMerged))
+                    return [];
+                if (content.metrics.loading)
+                    return [100, 100];
+                return [content.metrics.metricValue("ram"), content.metrics.metricValue("swap")];
+            }
             // Raw °C for the secondary readout (split right half OR
             // dedicated temp metric). Cheap query — always evaluated
             // for the metrics that have a temperature sensor.
@@ -258,7 +274,7 @@ GridLayout {
             Layout.minimumWidth: 80
             Layout.minimumHeight: 80
 
-            label: Catalog.labelFor(modelData)
+            label: ringDelegate._ramSwapValues.length > 0 ? qsTr("RAM\nSWAP") : Catalog.labelFor(modelData)
             // During loading every ring sweeps to 100% — a "warming
             // up" visual cue. Once metrics.loading flips false (first
             // ksysguard tick lands), values animate down to actuals
@@ -278,6 +294,8 @@ GridLayout {
                     return 100;
                 if (_isDisk && _diskValues.length > 0)
                     return 0;
+                if (ringDelegate._ramSwapValues.length > 0)
+                    return 0;
                 if (_isTemp)
                     return Catalog.tempToPercent(_rawTempC);
                 // Throughput arc: left/read half in split mode, else the combined
@@ -296,11 +314,15 @@ GridLayout {
             rawValue: {
                 if (_isDisk && _diskValues.length > 0)
                     return content.metrics.loading ? NaN : DiskMetrics.averagePercent(_diskValues);
+                if (ringDelegate._ramSwapValues.length > 0)
+                    return content.metrics.loading ? 100 : ringDelegate._ramSwapValues[0];
                 if (!content.metrics.loading && _isTemp && _tempInfo)
                     return _tempInfo.value;
                 return NaN;
             }
             unit: {
+                if (ringDelegate._ramSwapValues.length > 0)
+                    return "";
                 if (_isRate)
                     return _io ? DiskIo.formatRateUnit(_rateSplit ? _io.readBps : _io.combinedBps) : "B/s";
                 return _isTemp && _tempInfo ? _tempInfo.unit : "%";
@@ -308,7 +330,7 @@ GridLayout {
             nestedValues: modelData === "cpu" && content.configStore.showCpuCores ? content.metrics.coreValues : []
             // Equal-thickness concentric rings for the selected disk
             // partitions ([] for every other ring → normal single arc).
-            equalValues: _diskValues
+            equalValues: ringDelegate._ramSwapValues.length > 0 ? ringDelegate._ramSwapValues : _diskValues
             // Per-partition custom colors (aligned to equalValues); a partition
             // without an override falls back to ringColor inside Ring. [] for
             // every non-disk ring.
@@ -321,12 +343,16 @@ GridLayout {
             splitValue: {
                 if (content.metrics.loading)
                     return 100;
+                if (ringDelegate._ramSwapValues.length > 0)
+                    return ringDelegate._ramSwapValues[1];
                 if (_rateSplit)
                     return _io ? _io.writePercent : 0;
                 return _splitOn ? content.metrics.metricTempPercent(modelData) : 0;
             }
             splitRawValue: !content.metrics.loading && _splitOn && _tempInfo ? _tempInfo.value : 0
             splitUnit: {
+                if (ringDelegate._ramSwapValues.length > 0)
+                    return "";
                 if (_rateSplit)
                     return _io ? DiskIo.formatRateUnit(_io.writeBps) : "B/s";
                 return _splitOn && _tempInfo ? _tempInfo.unit : "";
@@ -337,17 +363,24 @@ GridLayout {
             // write on the right (splitValueOverride). Empty during loading so
             // the warm-up shows the 100% sweep like the others.
             valueOverride: {
+                if (ringDelegate._ramSwapValues.length > 0) {
+                    if (content.metrics.loading)
+                        return "";
+                    return Math.round(ringDelegate._ramSwapValues[0]) + "%";
+                }
                 if (!_isRate || content.metrics.loading || !_io)
                     return "";
                 return DiskIo.formatRateValue(_rateSplit ? _io.readBps : _io.combinedBps);
             }
-            splitValueOverride: (_isRate && _rateSplit && !content.metrics.loading && _io) ? DiskIo.formatRateValue(_io.writeBps) : ""
+            // RAM/SWAP stack: swap is the second (offset) readout under RAM,
+            // mirroring the disk-I/O stacked split. Empty for every other ring.
+            splitValueOverride: ringDelegate._ramSwapValues.length > 0 ? (content.metrics.loading ? "" : Math.round(ringDelegate._ramSwapValues[1]) + "%") : ((_isRate && _rateSplit && !content.metrics.loading && _io) ? DiskIo.formatRateValue(_io.writeBps) : "")
             // Throughput rings render "MB/s" small + tight (unitSmall); the number
             // is the override above. Other rings keep their full-size unit.
             unitSmall: ringDelegate._isRate
             // Throughput split readouts are too wide for one line → stack them
             // diagonally (read up-left, write down-right). Temp split stays flat.
-            splitStacked: ringDelegate._rateSplit
+            splitStacked: ringDelegate._rateSplit || ringDelegate._ramSwapValues.length > 0
             // Shared color for every ring; disk partitions with a custom
             // color override it per-ring via equalColors above.
             ringColor: content._ringColor

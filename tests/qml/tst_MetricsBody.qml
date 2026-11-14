@@ -51,6 +51,7 @@ Item {
             body.showCpuCores = false;
             body.mergeCpuTemp = false;
             body.mergeGpuTemp = false;
+            body.mergeRamSwap = false;
             body.tempUnit = "auto";
             body.availableMetrics = null;
             wait(20);
@@ -116,7 +117,7 @@ Item {
 
         // ── Property surface (catches typos in the bridge spec) ──────
         function test_all_bridged_properties_present() {
-            const keys = ["metricOrderCsv", "enabledMetricsCsv", "enabledPartitionsCsv", "partitionOrderCsv", "showCpuCores", "mergeCpuTemp", "mergeGpuTemp", "tempUnit"];
+            const keys = ["metricOrderCsv", "enabledMetricsCsv", "enabledPartitionsCsv", "partitionOrderCsv", "showCpuCores", "mergeCpuTemp", "mergeGpuTemp", "mergeRamSwap", "tempUnit"];
             for (const k of keys) {
                 verify(k in body, "MetricsBody must expose property " + k);
             }

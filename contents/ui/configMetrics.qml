@@ -24,6 +24,7 @@ Platform.PlaceholderKCM {
     property alias cfg_showCpuCores: body.showCpuCores
     property alias cfg_mergeCpuTemp: body.mergeCpuTemp
     property alias cfg_mergeGpuTemp: body.mergeGpuTemp
+    property alias cfg_mergeRamSwap: body.mergeRamSwap
     property alias cfg_splitDiskIo: body.splitDiskIo
     property alias cfg_splitNet: body.splitNet
     property alias cfg_splitGpuDevices: body.splitGpuDevices

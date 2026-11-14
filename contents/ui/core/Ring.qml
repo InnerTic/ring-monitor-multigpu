@@ -77,9 +77,9 @@ Item {
     // side by side, so they STACK diagonally — read up-left toward its half-arc,
     // write down-right. Temperature split (short "45°C") stays flat side-by-side.
     // The {x,y} centre offsets per readout are pure math in RingGeometry.
-    property bool splitStacked: false
-    readonly property var _readOffset: Geom.splitReadoutOffset(-1, splitMode, splitStacked, size, valuePx)
-    readonly property var _writeOffset: Geom.splitReadoutOffset(1, splitMode, splitStacked, size, valuePx)
+    property bool splitStacked: false; readonly property bool _equalSplit: root._equalMode && root.splitValueOverride !== ""
+    readonly property var _readOffset: Geom.splitReadoutOffset(-1, splitMode || _equalSplit, splitStacked, size, valuePx)
+    readonly property var _writeOffset: (_equalSplit && !splitMode) ? ({ x: 0, y: Math.round(valuePx * 0.45) }) : Geom.splitReadoutOffset(1, splitMode || _equalSplit, splitStacked, size, valuePx)
 
     // Optional: render a small "update available" dot inside the 90°
     // bottom gap, next to the label. Clicking it fires updateBadgeClicked
@@ -399,13 +399,14 @@ Item {
             text: root._composeReadout(root.valueOverride !== "" ? root.valueOverride : Math.round(root.displayRawValue), root.unit)
             color: root.textColor
             opacity: root.textOpacity
-            font.pixelSize: root.splitMode ? Math.round(root.valuePx * 0.75) : root.valuePx
+            // Formatted equal-mode readouts (RAM/SWAP "29%"/"3%") use split size.
+            font.pixelSize: Math.round(root.valuePx * ((root.splitMode || root._equalSplit || (root._equalMode && root.valueOverride !== "")) ? 0.75 : 1))
             font.weight: Font.Light
         }
 
         Text {
             id: splitValueText
-            visible: root.splitMode && !root._equalMode
+            visible: (root.splitMode && !root._equalMode) || root._equalSplit
             anchors.verticalCenter: parent.verticalCenter
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.horizontalCenterOffset: root._writeOffset.x
@@ -428,7 +429,7 @@ Item {
             color: root.textColor
             opacity: 0.55 * root.textOpacity
             font.pixelSize: root.labelPx
-            font.letterSpacing: 2
+            font.letterSpacing: 2; horizontalAlignment: Text.AlignHCenter
         }
 
         // ── Update-available badge (90° gap, left of the label) ─────────

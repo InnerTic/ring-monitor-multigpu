@@ -33,6 +33,8 @@ KCM.SimpleKCM {
     property var cfg_mergeCpuTempDefault
     property var cfg_mergeGpuTemp
     property var cfg_mergeGpuTempDefault
+    property var cfg_mergeRamSwap
+    property var cfg_mergeRamSwapDefault
     property var cfg_splitDiskIo
     property var cfg_splitDiskIoDefault
     property var cfg_splitNet

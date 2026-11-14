@@ -45,6 +45,7 @@ Settings {
     property bool showCpuCores: true
     property bool mergeCpuTemp: false
     property bool mergeGpuTemp: false
+    property bool mergeRamSwap: true
     property bool splitDiskIo: false
     property bool splitNet: false
     property bool splitGpuDevices: true
