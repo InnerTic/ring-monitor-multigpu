@@ -121,16 +121,22 @@ test("MainContent passes openRight: content._tooltipOpenRight to all four toolti
 
 // ── 4. GPU tooltip wiring (#71) ─────────────────────────────────────
 //
-// The gpu ring follows the disk pattern (single ring → a direct when-gated
-// Binding to the backend gate, no content-scope fan-in): GpuTooltip is armed
-// only on the gpu ring, its detail/processes are read only while sampling, and
-// gpuDetailSamplingActive is bound to its samplingActive on the gpu ring.
+// The gpu tooltip arms on the aggregate gpu ring AND on every per-GPU usage
+// ring produced by the splitGpuDevices expansion. Each armed delegate writes
+// the content-scope _gpuTooltipHovered fan-in, and gpuDetailSamplingActive is
+// bound to that fan-in so the gated detail sensors run only while some GPU
+// tooltip is hovered.
 
-test("MainContent instantiates a GpuTooltip armed only on the gpu ring", () => {
+test("MainContent instantiates a GpuTooltip armed on the aggregate and every per-GPU ring", () => {
     assert.match(
         MAIN_CONTENT,
-        /GpuTooltip\s*\{[\s\S]*?armed\s*:\s*ringDelegate\.modelData\s*===\s*"gpu"/,
-        "MainContent.qml must instantiate GpuTooltip with armed: ringDelegate.modelData === \"gpu\""
+        /GpuTooltip\s*\{[\s\S]*?armed\s*:\s*ringDelegate\._gpuArmed/,
+        "MainContent.qml must instantiate GpuTooltip with armed: ringDelegate._gpuArmed"
+    );
+    assert.match(
+        MAIN_CONTENT,
+        /_gpuArmed\s*:\s*ringDelegate\.modelData\s*===\s*"gpu"\s*\|\|\s*ringDelegate\._isGpuUsage/,
+        "MainContent._gpuArmed must cover the aggregate gpu ring and every per-GPU usage ring"
     );
 });
 
@@ -152,10 +158,15 @@ test("MainContent reads metrics.gpuProcesses only while the gpu tooltip samples"
     );
 });
 
-test("MainContent binds gpuDetailSamplingActive to the gpu tooltip on the gpu ring", () => {
+test("MainContent fans the GPU tooltip hover into gpuDetailSamplingActive", () => {
     assert.match(
         MAIN_CONTENT,
-        /property\s*:\s*"gpuDetailSamplingActive"[\s\S]*?value\s*:\s*gpuTooltip\.samplingActive[\s\S]*?when\s*:.*modelData\s*===\s*"gpu"/,
-        "MainContent.qml must bind metrics.gpuDetailSamplingActive to gpuTooltip.samplingActive, gated on the gpu ring"
+        /property\s*:\s*"_gpuTooltipHovered"[\s\S]*?value\s*:\s*gpuTooltip\.samplingActive[\s\S]*?when\s*:\s*ringDelegate\._gpuArmed/,
+        "MainContent.qml must fan gpuTooltip.samplingActive into content._gpuTooltipHovered while armed"
+    );
+    assert.match(
+        MAIN_CONTENT,
+        /property\s*:\s*"gpuDetailSamplingActive"[\s\S]*?value\s*:\s*content\._gpuTooltipHovered[\s\S]*?when\s*:.*gpuDetailSamplingActive\s*!==\s*undefined/,
+        "MainContent.qml must bind metrics.gpuDetailSamplingActive to content._gpuTooltipHovered"
     );
 });

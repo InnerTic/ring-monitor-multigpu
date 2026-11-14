@@ -9,7 +9,7 @@ const Catalog = require('../contents/ui/core/MetricsCatalog.js');
 
 test('METRIC_IDS contains all known metrics in canonical order', () => {
     // Temp variants sit next to their usage counterpart (adjacent in the strip).
-    assert.deepEqual(Catalog.METRIC_IDS, ['cpu', 'cpuTemp', 'ram', 'swap', 'gpu', 'gpuTemp', 'disk', 'diskIo']);
+    assert.deepEqual(Catalog.METRIC_IDS, ['cpu', 'cpuTemp', 'ram', 'swap', 'gpu', 'gpuTemp', 'disk', 'diskIo', 'net']);
 });
 
 test('labelFor: temperature variants get a "T" suffix; diskIo is distinct from DISKS', () => {
@@ -46,11 +46,11 @@ test('isRateMetric: exactly diskIo is a byte/s-rate metric (disjoint from temp)'
 test('mergeWithCatalog: appends missing catalog ids to a user CSV', () => {
     // Pre-0.4 user: cpu+ram+gpu order, no temp metrics yet.
     const result = Catalog.mergeWithCatalog(['cpu', 'ram', 'gpu']);
-    assert.deepEqual(result, ['cpu', 'ram', 'gpu', 'cpuTemp', 'swap', 'gpuTemp', 'disk', 'diskIo']);
+    assert.deepEqual(result, ['cpu', 'ram', 'gpu', 'cpuTemp', 'swap', 'gpuTemp', 'disk', 'diskIo', 'net']);
 });
 
 test('mergeWithCatalog: preserves existing order when nothing is missing', () => {
-    const input = ['gpu', 'cpu', 'ram', 'cpuTemp', 'swap', 'gpuTemp', 'disk', 'diskIo'];
+    const input = ['gpu', 'cpu', 'ram', 'cpuTemp', 'swap', 'gpuTemp', 'disk', 'diskIo', 'net'];
     assert.deepEqual(Catalog.mergeWithCatalog(input), input);
 });
 

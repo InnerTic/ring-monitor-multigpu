@@ -68,7 +68,7 @@
 
         <entry name="splitGpuDevices" type="Bool">
             <label>Render one GPU ring per discovered GPU instead of a single aggregate ring (gpu and gpuTemp each expand into one ring per device, labelled GPU 0, GPU 1, …). Requires two or more GPUs to take effect; mergeGpuTemp merges each device's temperature into that device's ring as before.</label>
-            <default>false</default>
+            <default>true</default>
         </entry>
     </group>
 
