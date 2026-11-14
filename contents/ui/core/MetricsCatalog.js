@@ -18,7 +18,7 @@
 
 // Canonical metric order. Temperature variants sit next to their
 // usage counterpart so fresh installs see related rings adjacent.
-var METRIC_IDS = ["cpu", "cpuTemp", "ram", "swap", "gpu", "gpuTemp", "disk", "diskIo"];
+var METRIC_IDS = ["cpu", "cpuTemp", "ram", "swap", "gpu", "gpuTemp", "disk", "diskIo", "net"];
 
 var METRIC_LABELS = {
     cpu: "CPU",
@@ -29,6 +29,7 @@ var METRIC_LABELS = {
     gpuTemp: "GPU T",
     disk: "DISKS",
     diskIo: "DISK IO",
+    net: "NET",
 };
 
 // METRIC_SENSOR_IDS maps the catalog id to its ksysguard sensor. For
@@ -50,15 +51,42 @@ var METRIC_SENSOR_IDS = {
 // ring sweep, and convertTemp before displaying the value.
 var TEMP_METRIC_IDS = { cpuTemp: true, gpuTemp: true };
 
+// Per-device GPU ids synthesized at render time when splitGpuDevices is on
+// and the backend discovers >=2 GPUs: `gpu` expands to `gpu0, gpu1, …`
+// (usage rings) and `gpuTemp` to `gpuTemp0, gpuTemp1, …` (temperature rings).
+// The index matches the ksysguard device index in `gpu/gpuN/…` sensor ids.
+// These ids are never persisted in the config CSV — MainContent derives them
+// via expandGpuDevices after availability filtering.
+function isGpuUsageId(id) {
+    return /^gpu\d+$/.test(id);
+}
+function isGpuTempId(id) {
+    return /^gpuTemp\d+$/.test(id);
+}
+function isPerGpuId(id) {
+    return isGpuUsageId(id) || isGpuTempId(id);
+}
+function gpuIndexFor(id) {
+    var m = /(\d+)$/.exec(id);
+    return m ? parseInt(m[1], 10) : -1;
+}
+
+// Numeric device index out of a ksysguard device base ("gpu/gpu1" → "1").
+function _deviceIndex(base) {
+    var m = /gpu(\d+)$/.exec(base);
+    return m ? m[1] : "";
+}
+
 function isTempMetric(id) {
-    return TEMP_METRIC_IDS[id] === true;
+    return TEMP_METRIC_IDS[id] === true || isGpuTempId(id);
 }
 
 // Metric ids whose value is an unbounded byte/s rate, not a 0-100 percent.
-// The backend exposes them via the `diskIo` property (per-component byte/s +
-// arc %), NOT through metricValue/the sensor map — MainContent special-cases
-// them like the disk multi-partition ring. Parallel to TEMP_METRIC_IDS.
-var RATE_METRIC_IDS = { diskIo: true };
+// The backend exposes them via the `diskIo` / `netIo` properties (per-component
+// byte/s + arc %), NOT through metricValue/the sensor map — MainContent
+// special-cases them like the disk multi-partition ring. Parallel to
+// TEMP_METRIC_IDS.
+var RATE_METRIC_IDS = { diskIo: true, net: true };
 
 function isRateMetric(id) {
     return RATE_METRIC_IDS[id] === true;
@@ -162,18 +190,47 @@ function mergeWithCatalog(currentIds) {
 // Drop cpuTemp / gpuTemp from the displayed list when the user asked
 // to merge them into the cpu / gpu ring AND both metrics are enabled
 // (no base ring → no merge target → temp metric stays as a full ring).
+// In split-GPU mode the per-device temp rings (gpuTempN) merge into their
+// gpuN ring the same way the aggregate gpuTemp merges into gpu.
 function applyMergedTempMode(enabledIds, mergeCpuTemp, mergeGpuTemp) {
     var has = {};
     for (var i = 0; i < enabledIds.length; i++) has[enabledIds[i]] = true;
     var cpuMerged = mergeCpuTemp && has.cpu && has.cpuTemp;
     var gpuMerged = mergeGpuTemp && has.gpu && has.gpuTemp;
-    if (!cpuMerged && !gpuMerged) return enabledIds.slice();
+    if (!cpuMerged && !gpuMerged && !mergeGpuTemp) return enabledIds.slice();
     var out = [];
     for (var j = 0; j < enabledIds.length; j++) {
         var id = enabledIds[j];
         if (cpuMerged && id === "cpuTemp") continue;
         if (gpuMerged && id === "gpuTemp") continue;
+        if (mergeGpuTemp && isGpuTempId(id) && has["gpu" + gpuIndexFor(id)]) continue;
         out.push(id);
+    }
+    return out;
+}
+
+// Expand the `gpu` / `gpuTemp` catalog ids into one ring per discovered GPU
+// when splitGpuDevices is on AND the backend reports >=2 devices. A
+// single-GPU box keeps the aggregate rings — a per-device split of one ring
+// would just relabel it. Display-side only: the config CSV keeps the catalog
+// ids, and MainContent applies this AFTER availability filtering (gpuDeviceIds
+// is [] until discovery settles, so gating on it here also defers the split
+// until the backend has real device data).
+function expandGpuDevices(enabledIds, splitGpuDevices, gpuDeviceIds) {
+    if (!splitGpuDevices || !gpuDeviceIds || gpuDeviceIds.length < 2)
+        return enabledIds.slice();
+    var out = [];
+    for (var i = 0; i < enabledIds.length; i++) {
+        var id = enabledIds[i];
+        if (id === "gpu") {
+            for (var j = 0; j < gpuDeviceIds.length; j++)
+                out.push("gpu" + _deviceIndex(gpuDeviceIds[j]));
+        } else if (id === "gpuTemp") {
+            for (var k = 0; k < gpuDeviceIds.length; k++)
+                out.push("gpuTemp" + _deviceIndex(gpuDeviceIds[k]));
+        } else {
+            out.push(id);
+        }
     }
     return out;
 }
@@ -254,10 +311,13 @@ function isSplitForBase(baseId, enabledIds, mergeCpuTemp, mergeGpuTemp) {
     for (var i = 0; i < enabledIds.length; i++) has[enabledIds[i]] = true;
     if (baseId === "cpu") return Boolean(mergeCpuTemp && has.cpu && has.cpuTemp);
     if (baseId === "gpu") return Boolean(mergeGpuTemp && has.gpu && has.gpuTemp);
+    if (isGpuUsageId(baseId)) return Boolean(mergeGpuTemp && has[baseId] && has["gpuTemp" + gpuIndexFor(baseId)]);
     return false;
 }
 
 function labelFor(id) {
+    if (isGpuUsageId(id)) return "GPU " + gpuIndexFor(id);
+    if (isGpuTempId(id)) return "GPU " + gpuIndexFor(id) + " T";
     return METRIC_LABELS[id] || String(id).toUpperCase();
 }
 
@@ -339,6 +399,11 @@ if (typeof module !== "undefined" && module.exports) {
         isRateMetric: isRateMetric,
         mergeWithCatalog: mergeWithCatalog,
         applyMergedTempMode: applyMergedTempMode,
+        expandGpuDevices: expandGpuDevices,
+        isGpuUsageId: isGpuUsageId,
+        isGpuTempId: isGpuTempId,
+        isPerGpuId: isPerGpuId,
+        gpuIndexFor: gpuIndexFor,
         classifyDiscoveredIds: classifyDiscoveredIds,
         isSplitForBase: isSplitForBase,
         TEMP_MIN_C: TEMP_MIN_C,

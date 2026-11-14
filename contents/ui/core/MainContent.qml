@@ -62,7 +62,13 @@ GridLayout {
     // applyMergedTempMode so split-mode never engages on an unavailable temp
     // metric. Full derivation chain: docs/components.md § MainContent.
     readonly property var _availableEnabledList: content.metrics.loading ? content._rawEnabledList : Catalog.filterByAvailable(content._rawEnabledList, content.metrics.availableMetrics)
-    readonly property var enabledList: Catalog.applyMergedTempMode(content._availableEnabledList, content.configStore.mergeCpuTemp, content.configStore.mergeGpuTemp)
+    // splitGpuDevices: expand gpu / gpuTemp into one ring per discovered GPU
+    // (gpu0, gpu1, gpuTemp0, gpuTemp1, …) — see Catalog.expandGpuDevices.
+    // Applied AFTER availability filtering so a GPU-less host drops the
+    // aggregate ring first, and gated on gpuDeviceIds ([] until discovery
+    // settles) so the split only engages with real device data.
+    readonly property var _expandedEnabledList: Catalog.expandGpuDevices(content._availableEnabledList, content.configStore.splitGpuDevices === true, content.metrics.gpuDeviceIds || [])
+    readonly property var enabledList: Catalog.applyMergedTempMode(content._expandedEnabledList, content.configStore.mergeCpuTemp, content.configStore.mergeGpuTemp)
     readonly property bool vertical: content.configStore.orientation === "vertical"
     readonly property int count: Math.max(1, content.enabledList.length)
 
@@ -74,6 +80,11 @@ GridLayout {
     // and a single content-scope Binding OR's them into the backend gate.
     property bool _cpuTooltipHovered: false
     property bool _memTooltipHovered: false
+    // Same fan-in for the GPU tooltip gate: split-GPU mode arms the tooltip
+    // on every per-GPU usage ring (gpu0, gpu1, …), so up to N delegates write
+    // here and the single content-scope Binding (below, by diskIo/netIo) OR's
+    // them into metrics.gpuDetailSamplingActive.
+    property bool _gpuTooltipHovered: false
 
     // Effective temperature mode: "celsius" or "fahrenheit", resolved
     // from the user's preference + the system locale's measurement
@@ -182,17 +193,29 @@ GridLayout {
             //   3. merged cpu/gpu — usage on the left half, temp on
             //      the right half (split mode), triggered by the
             //      merge* config when both sides are enabled.
+            // splitGpuDevices adds per-GPU rings to flavours 1-3: modelData
+            // becomes gpuN / gpuTempN (N = ksysguard device index), which the
+            // backend resolves per-device via Catalog.gpuIndexFor.
             readonly property bool _isTemp: Catalog.isTempMetric(modelData)
-            readonly property bool _splitOn: Catalog.isSplitForBase(modelData, content._availableEnabledList, content.configStore.mergeCpuTemp, content.configStore.mergeGpuTemp)
-            // Disk I/O throughput ring: a raw byte/s rate, not a %. The backend
-            // exposes it via the `diskIo` property snapshot {readBps, writeBps,
-            // combinedBps, readPercent, writePercent, combinedPercent}; the arc
-            // uses the *Percent (auto-scaled), the centre label the *Bps through
-            // DiskIo.formatRate. splitDiskIo renders read|write as two half-arcs
-            // (reusing split mode), else a single combined arc.
-            readonly property bool _isDiskIo: Catalog.isRateMetric(modelData)
-            readonly property bool _diskIoSplit: _isDiskIo && content.configStore.splitDiskIo
-            readonly property var _io: _isDiskIo ? (content.metrics.diskIo || null) : null
+            readonly property bool _splitOn: Catalog.isSplitForBase(modelData, content._expandedEnabledList, content.configStore.mergeCpuTemp, content.configStore.mergeGpuTemp)
+            readonly property bool _isGpuUsage: Catalog.isGpuUsageId(modelData)
+            readonly property bool _isGpuTemp: Catalog.isGpuTempId(modelData)
+            // GPU tooltip arming covers both the aggregate ring and every
+            // per-GPU usage ring from the split.
+            readonly property bool _gpuArmed: ringDelegate.modelData === "gpu" || ringDelegate._isGpuUsage
+            // Throughput ring (disk I/O + network): a raw byte/s rate, not a %.
+            // The backend exposes the snapshot via the `diskIo` / `netIo`
+            // properties {readBps, writeBps, combinedBps, readPercent,
+            // writePercent, combinedPercent}; the arc uses the *Percent
+            // (auto-scaled), the centre label the *Bps through
+            // DiskIo.formatRate. splitDiskIo / splitNet render read|write as
+            // two half-arcs (reusing split mode), else a single combined arc.
+            // On the net ring download = read half, upload = write half.
+            readonly property bool _isRate: Catalog.isRateMetric(modelData)
+            readonly property bool _isDiskIo: modelData === "diskIo"
+            readonly property bool _isNet: modelData === "net"
+            readonly property bool _rateSplit: _isRate && (_isDiskIo ? content.configStore.splitDiskIo : (_isNet ? content.configStore.splitNet : false))
+            readonly property var _io: _isDiskIo ? (content.metrics.diskIo || null) : (_isNet ? (content.metrics.netIo || null) : null)
             // Disk multi-partition: one equal-thickness ring per selected
             // filesystem, centre = their average. Empty when not the disk
             // ring or when nothing resolved (→ aggregate single ring via the
@@ -257,12 +280,12 @@ GridLayout {
                     return 0;
                 if (_isTemp)
                     return Catalog.tempToPercent(_rawTempC);
-                // diskIo arc: left/read half in split mode, else the combined
+                // Throughput arc: left/read half in split mode, else the combined
                 // sweep. The right/write half is splitValue below.
-                if (_isDiskIo) {
+                if (_isRate) {
                     if (!_io)
                         return 0;
-                    return _diskIoSplit ? _io.readPercent : _io.combinedPercent;
+                    return _rateSplit ? _io.readPercent : _io.combinedPercent;
                 }
                 return content.metrics.metricValue(modelData);
             }
@@ -278,8 +301,8 @@ GridLayout {
                 return NaN;
             }
             unit: {
-                if (_isDiskIo)
-                    return _io ? DiskIo.formatRateUnit(_diskIoSplit ? _io.readBps : _io.combinedBps) : "B/s";
+                if (_isRate)
+                    return _io ? DiskIo.formatRateUnit(_rateSplit ? _io.readBps : _io.combinedBps) : "B/s";
                 return _isTemp && _tempInfo ? _tempInfo.unit : "%";
             }
             nestedValues: modelData === "cpu" && content.configStore.showCpuCores ? content.metrics.coreValues : []
@@ -290,41 +313,41 @@ GridLayout {
             // without an override falls back to ringColor inside Ring. [] for
             // every non-disk ring.
             equalColors: ringDelegate._isDisk ? content._diskColors : []
-            splitMode: _splitOn || _diskIoSplit
+            splitMode: _splitOn || _rateSplit
             // splitValue stays a percentage (0-100) so the geometry math
             // and tempToPercent threshold work in °C regardless of the
             // display unit; only splitRawValue / splitUnit change. For the
-            // diskIo split it's the write half's auto-scaled percent.
+            // throughput split it's the write half's auto-scaled percent.
             splitValue: {
                 if (content.metrics.loading)
                     return 100;
-                if (_diskIoSplit)
+                if (_rateSplit)
                     return _io ? _io.writePercent : 0;
                 return _splitOn ? content.metrics.metricTempPercent(modelData) : 0;
             }
             splitRawValue: !content.metrics.loading && _splitOn && _tempInfo ? _tempInfo.value : 0
             splitUnit: {
-                if (_diskIoSplit)
+                if (_rateSplit)
                     return _io ? DiskIo.formatRateUnit(_io.writeBps) : "B/s";
                 return _splitOn && _tempInfo ? _tempInfo.unit : "";
             }
-            // Preformatted MB/s centre labels for the diskIo ring (empty for
+            // Preformatted MB/s centre labels for the throughput rings (empty for
             // every other ring → the normal Math.round(rawValue)+unit path).
             // Combined → single label; split → read on the left (valueOverride),
             // write on the right (splitValueOverride). Empty during loading so
             // the warm-up shows the 100% sweep like the others.
             valueOverride: {
-                if (!_isDiskIo || content.metrics.loading || !_io)
+                if (!_isRate || content.metrics.loading || !_io)
                     return "";
-                return DiskIo.formatRateValue(_diskIoSplit ? _io.readBps : _io.combinedBps);
+                return DiskIo.formatRateValue(_rateSplit ? _io.readBps : _io.combinedBps);
             }
-            splitValueOverride: (_isDiskIo && _diskIoSplit && !content.metrics.loading && _io) ? DiskIo.formatRateValue(_io.writeBps) : ""
-            // diskIo renders "MB/s" small + tight (unitSmall); the number is the
-            // override above. Other rings keep their full-size unit.
-            unitSmall: ringDelegate._isDiskIo
-            // diskIo split readouts are too wide for one line → stack them
+            splitValueOverride: (_isRate && _rateSplit && !content.metrics.loading && _io) ? DiskIo.formatRateValue(_io.writeBps) : ""
+            // Throughput rings render "MB/s" small + tight (unitSmall); the number
+            // is the override above. Other rings keep their full-size unit.
+            unitSmall: ringDelegate._isRate
+            // Throughput split readouts are too wide for one line → stack them
             // diagonally (read up-left, write down-right). Temp split stays flat.
-            splitStacked: ringDelegate._diskIoSplit
+            splitStacked: ringDelegate._rateSplit
             // Shared color for every ring; disk partitions with a custom
             // color override it per-ring via equalColors above.
             ringColor: content._ringColor
@@ -397,6 +420,8 @@ GridLayout {
                     content._cpuTooltipHovered = false;
                 if (ringDelegate.modelData === "ram")
                     content._memTooltipHovered = false;
+                if (ringDelegate._gpuArmed)
+                    content._gpuTooltipHovered = false;
             }
 
             // Disk ring: hover reveals the per-partition tooltip (#68). `details`
@@ -423,24 +448,28 @@ GridLayout {
             }
 
             // GPU ring: hover reveals the detail tooltip (#71) — model, VRAM,
-            // temp, power, clock + (NVIDIA-only) top GPU processes. Like disk and
-            // unlike cpu/ram, there's a single gpu ring, so the backend gate is
-            // driven directly by one when-gated Binding (no content-scope fan-in).
-            // detail/processes are read ONLY while sampling (hover) so the gated
-            // NVML/sysfs detail reads (+ /proc name resolution) stay off when no
-            // tooltip is up; gpuDetailSamplingActive gates the backend detail path.
+            // temp, power, clock + (NVIDIA-only) top GPU processes. Armed on the
+            // aggregate gpu ring AND every per-GPU usage ring (splitGpuDevices);
+            // the per-GPU rings pass MetricsBackend.gpuDetails[deviceIndex], which
+            // re-uses the same gated detail sensors. detail/processes are read
+            // ONLY while sampling (hover) so the gated NVML/sysfs detail reads
+            // stay off when no tooltip is up. Unlike cpu/ram there used to be a
+            // single gpu ring, but the split arms N delegates — so the backend
+            // gate goes through the content-scope _gpuTooltipHovered fan-in
+            // Binding below (same reason as _cpuTooltipHovered/_memTooltipHovered).
             GpuTooltip {
                 id: gpuTooltip
-                armed: ringDelegate.modelData === "gpu"
+                armed: ringDelegate._gpuArmed
                 openRight: content._tooltipOpenRight
-                detail: (ringDelegate.modelData === "gpu" && gpuTooltip.samplingActive) ? content.metrics.gpuDetail : ({})
-                processes: (ringDelegate.modelData === "gpu" && gpuTooltip.samplingActive) ? content.metrics.gpuProcesses : []
+                title: ringDelegate._isGpuUsage ? qsTr("GPU") + " " + Catalog.gpuIndexFor(ringDelegate.modelData) : qsTr("GPU")
+                detail: (ringDelegate._gpuArmed && gpuTooltip.samplingActive) ? (ringDelegate.modelData === "gpu" ? content.metrics.gpuDetail : content.metrics.gpuDetails[Catalog.gpuIndexFor(ringDelegate.modelData)]) : ({})
+                processes: (ringDelegate._gpuArmed && gpuTooltip.samplingActive) ? content.metrics.gpuProcesses : []
             }
             Binding {
-                target: content.metrics
-                property: "gpuDetailSamplingActive"
+                target: content
+                property: "_gpuTooltipHovered"
                 value: gpuTooltip.samplingActive
-                when: ringDelegate.modelData === "gpu" && content.metrics.gpuDetailSamplingActive !== undefined
+                when: ringDelegate._gpuArmed
             }
         }
     }
@@ -458,6 +487,18 @@ GridLayout {
         when: content.metrics !== undefined && content.metrics.processSamplingActive !== undefined
     }
 
+    // Same fan-in for the GPU detail gate: split-GPU mode arms the tooltip on
+    // every per-GPU usage ring, and each armed delegate writes its own
+    // _gpuTooltipHovered — a single when-gated Binding here OR's them into
+    // gpuDetailSamplingActive so the gated detail sensors run only while some
+    // GPU tooltip is actually hovered.
+    Binding {
+        target: content.metrics
+        property: "gpuDetailSamplingActive"
+        value: content._gpuTooltipHovered
+        when: content.metrics !== undefined && content.metrics.gpuDetailSamplingActive !== undefined
+    }
+
     // Disk-I/O sampling runs only while a diskIo ring is on screen: the backend
     // gates its /proc/diskstats poll (standalone) / ksysguard subscription
     // (Plasma) on this. Driven once at content scope (not per-delegate) since
@@ -468,5 +509,14 @@ GridLayout {
         property: "diskIoSamplingActive"
         value: content.enabledList.indexOf("diskIo") >= 0
         when: content.metrics !== undefined && content.metrics.diskIoSamplingActive !== undefined
+    }
+
+    // Same gate for the net ring: ksysguard stays unsubscribed while the NET
+    // ring is off-screen (the NetIoSampler's sensors are `enabled: active`).
+    Binding {
+        target: content.metrics
+        property: "netIoSamplingActive"
+        value: content.enabledList.indexOf("net") >= 0
+        when: content.metrics !== undefined && content.metrics.netIoSamplingActive !== undefined
     }
 }

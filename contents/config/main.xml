@@ -8,7 +8,7 @@
     <group name="Metrics">
         <entry name="metricOrder" type="String">
             <label>All metric ids in display order (whether enabled or not)</label>
-            <default>cpu,cpuTemp,ram,swap,gpu,gpuTemp,disk,diskIo</default>
+            <default>cpu,cpuTemp,ram,swap,gpu,gpuTemp,disk,diskIo,net</default>
         </entry>
 
         <entry name="enabledMetrics" type="String">
@@ -58,6 +58,16 @@
 
         <entry name="splitDiskIo" type="Bool">
             <label>Render the disk I/O ring split into two half-arcs — read on the left, write on the right — instead of a single combined read+write arc.</label>
+            <default>false</default>
+        </entry>
+
+        <entry name="splitNet" type="Bool">
+            <label>Render the network ring split into two half-arcs — download on the left, upload on the right — instead of a single combined download+upload arc.</label>
+            <default>false</default>
+        </entry>
+
+        <entry name="splitGpuDevices" type="Bool">
+            <label>Render one GPU ring per discovered GPU instead of a single aggregate ring (gpu and gpuTemp each expand into one ring per device, labelled GPU 0, GPU 1, …). Requires two or more GPUs to take effect; mergeGpuTemp merges each device's temperature into that device's ring as before.</label>
             <default>false</default>
         </entry>
     </group>

@@ -75,6 +75,10 @@ ColumnLayout {
     property bool mergeCpuTemp: false
     property bool mergeGpuTemp: false
     property bool splitDiskIo: false
+    property bool splitNet: false
+    // Render one GPU ring per discovered GPU instead of a single aggregate
+    // ring (gpu / gpuTemp each expand to per-device rings; requires ≥2 GPUs).
+    property bool splitGpuDevices: false
     property string tempUnit: "auto"
 
     // ── Internal — the displayed order is a ListModel built from metricOrderCsv ──
@@ -98,7 +102,8 @@ ColumnLayout {
             gpu: qsTr("GPU usage"),
             gpuTemp: qsTr("GPU temperature"),
             disk: qsTr("Disk space per selected partition"),
-            diskIo: qsTr("Disk read/write throughput")
+            diskIo: qsTr("Disk read/write throughput"),
+            net: qsTr("Network download/upload throughput")
         })
 
     function currentOrder() {
@@ -366,12 +371,16 @@ ColumnLayout {
                         return cpuCoresToggle;
                     if (_metricId === "cpuTemp")
                         return cpuTempMergeToggle;
+                    if (_metricId === "gpu")
+                        return gpuDevicesToggle;
                     if (_metricId === "gpuTemp")
                         return gpuTempMergeToggle;
                     if (_metricId === "disk")
                         return diskPartitionsPicker;
                     if (_metricId === "diskIo")
                         return diskIoSplitToggle;
+                    if (_metricId === "net")
+                        return netSplitToggle;
                     return null;
                 }
             }
@@ -477,6 +486,29 @@ ColumnLayout {
             text: qsTr("Split read / write (left / right)")
             checked: body.splitDiskIo
             onClicked: body.splitDiskIo = checked
+        }
+    }
+
+    Component {
+        id: netSplitToggle
+        QQC2.CheckBox {
+            text: qsTr("Split download / upload (left / right)")
+            checked: body.splitNet
+            onClicked: body.splitNet = checked
+        }
+    }
+
+    // Per-GPU rings: expand gpu / gpuTemp into one ring per discovered GPU
+    // (labelled GPU 0, GPU 1, …). Takes effect only when ≥2 GPUs are present
+    // (single-GPU hosts keep the aggregate ring — a split of one would just
+    // relabel it). mergeGpuTemp still merges each device's temp into that
+    // device's ring.
+    Component {
+        id: gpuDevicesToggle
+        QQC2.CheckBox {
+            text: qsTr("Show each GPU as its own ring")
+            checked: body.splitGpuDevices
+            onClicked: body.splitGpuDevices = checked
         }
     }
 

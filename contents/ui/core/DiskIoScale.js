@@ -20,7 +20,9 @@
 //
 // Public surface:
 //   combinedRate(readBps, writeBps)        - read+write sum, NaN-safe
-//   updatePeak(prevPeak, rateBps)          - new decaying peak for this tick
+//   updatePeak(prevPeak, rateBps, floorBps?) - new decaying peak for this tick;
+//             the optional floor overrides PEAK_FLOOR_BPS (the net ring passes
+//             the lower NET_PEAK_FLOOR_BPS)
 //   rateToPercent(rateBps, peakBps)        - 0-100 arc fill against the peak
 //   formatRate(bps)                        - "{n} {unit}/s" display string
 
@@ -54,6 +56,14 @@ var PEAK_DECAY = 0.98;
 // transfer always pushes the peak above it within a tick.
 var PEAK_FLOOR_BPS = 10 * BYTES_PER_MB;
 
+// Floor for the NETWORK ring's peak. Network traffic sits far below disk
+// I/O (a home link is 1-100 MB/s against a drive's hundreds), so the
+// disk floor above would leave the ring near-empty for ordinary
+// browsing/downloads. 1 MB/s keeps a background trickle to a sliver while
+// any real transfer pushes the peak above it within a tick. The net
+// sampler passes this as the floor arg to updatePeak.
+var NET_PEAK_FLOOR_BPS = 1 * BYTES_PER_MB;
+
 function _finite(n) {
     return (typeof n === "number" && isFinite(n)) ? n : 0;
 }
@@ -71,15 +81,18 @@ function combinedRate(readBps, writeBps) {
 // New peak for this tick: the larger of the current rate, the decayed
 // previous peak, and the floor. Monotonic against the live rate (a
 // faster sample always raises it immediately), decaying only while the
-// rate sits below the previous peak.
-function updatePeak(prevPeak, rateBps) {
+// rate sits below the previous peak. floorBps defaults to PEAK_FLOOR_BPS;
+// the net ring passes NET_PEAK_FLOOR_BPS for its lighter traffic band.
+function updatePeak(prevPeak, rateBps, floorBps) {
+    if (typeof floorBps !== "number" || !isFinite(floorBps))
+        floorBps = PEAK_FLOOR_BPS;
     var prev = _finite(prevPeak);
     var rate = _finite(rateBps);
     if (rate < 0) rate = 0;
     var decayed = prev * PEAK_DECAY;
     var peak = rate;
     if (decayed > peak) peak = decayed;
-    if (PEAK_FLOOR_BPS > peak) peak = PEAK_FLOOR_BPS;
+    if (floorBps > peak) peak = floorBps;
     return peak;
 }
 
@@ -140,6 +153,7 @@ if (typeof module !== "undefined" && module.exports) {
         BYTES_PER_MB: BYTES_PER_MB,
         PEAK_DECAY: PEAK_DECAY,
         PEAK_FLOOR_BPS: PEAK_FLOOR_BPS,
+        NET_PEAK_FLOOR_BPS: NET_PEAK_FLOOR_BPS,
         combinedRate: combinedRate,
         updatePeak: updatePeak,
         rateToPercent: rateToPercent,

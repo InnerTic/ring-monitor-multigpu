@@ -28,11 +28,14 @@ import "GpuTooltipModel.js" as Model
 //   samplingActive - true the instant the pointer enters (armed-gated); the
 //                    parent binds metrics.gpuTooltipActive to it.
 //
-// Known multi-GPU limitation (Plasma): when >1 GPU is present, the Plasma
-// ksysguard sensors expose aggregate VRAM (gpu/all/usedVram,totalVram) while
-// power, clock, and model name come from device 0. The "Model" stat row
-// identifies which device's name is shown. Single-aggregate-panel is the
-// chosen design for the MVP; a per-device carousel is a future follow-up.
+// Known multi-GPU limitation (Plasma): with splitGpuDevices OFF, >1 GPU still
+// shows one aggregate panel — ksysguard exposes aggregate VRAM
+// (gpu/all/usedVram,totalVram) while power, clock, and model name come from
+// device 0; the "Model" stat row identifies which device's name is shown.
+// Turning splitGpuDevices ON renders one ring per GPU, and each ring's tooltip
+// then receives that device's own gpuDetails entry (per-device model/power/
+// clock; VRAM stays the aggregate since ksysguard has no per-device VRAM).
+// Single-aggregate-panel remains the default; the split is opt-in.
 Item {
     id: root
 

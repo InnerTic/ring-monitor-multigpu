@@ -35,6 +35,10 @@ KCM.SimpleKCM {
     property var cfg_mergeGpuTempDefault
     property var cfg_splitDiskIo
     property var cfg_splitDiskIoDefault
+    property var cfg_splitNet
+    property var cfg_splitNetDefault
+    property var cfg_splitGpuDevices
+    property var cfg_splitGpuDevicesDefault
     property var cfg_orientation
     property var cfg_orientationDefault
     property var cfg_ringSize

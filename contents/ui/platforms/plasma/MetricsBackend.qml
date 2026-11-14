@@ -79,7 +79,10 @@ Item {
             // ksysguard exposes disk/all/{read,write} on any host with a disk
             // (no-op until the diskIo UI PR adds the catalog id — filtered to
             // METRIC_IDS).
-            "diskIo": true
+            "diskIo": true,
+            // ksysguard exposes network/all/{download,upload} on any host with
+            // a network interface.
+            "net": true
         });
     }
 
@@ -111,12 +114,20 @@ Item {
             return backend._gpuUsageValue;
         if (id === "gpuTemp")
             return backend._gpuTempValue;
+        if (Catalog.isGpuUsageId(id))
+            return backend.gpuUsageValues[Catalog.gpuIndexFor(id)] || 0;
+        if (Catalog.isGpuTempId(id))
+            return backend.gpuTempValues[Catalog.gpuIndexFor(id)] || 0;
         return Catalog.valueFromSensorMap(sensorMap, id);
     }
 
     function metricRawTemp(id) {
         if (id === "gpu")
             return backend._gpuTempValue;
+        if (Catalog.isGpuUsageId(id))
+            return backend.gpuTempValues[Catalog.gpuIndexFor(id)] || 0;
+        if (Catalog.isGpuTempId(id))
+            return backend.gpuTempValues[Catalog.gpuIndexFor(id)] || 0;
         return Catalog.valueFromSensorMap(tempSensorMap, id);
     }
 
@@ -154,6 +165,84 @@ Item {
         };
     }
 
+    // ── Per-device GPU surface (splitGpuDevices) ────────────────────
+    // gpuDeviceIds = discovered ksysguard device bases ("gpu/gpu0", "gpu/gpu1",
+    // …), sorted by device index. gpuUsageValues / gpuTempValues are the
+    // per-device ring readings aligned to it (usage 0-100, temp in °C — NaN
+    // while a device hasn't reported yet). MainContent expands gpu → gpu0,
+    // gpu1, … and gpuTemp → gpuTemp0, gpuTemp1, … off this; metricValue /
+    // metricRawTemp resolve the per-GPU ids back through these arrays. Each
+    // array reads the Instantiator ticks first, so it re-evaluates whenever
+    // any device sensor ticks.
+    readonly property alias gpuDeviceIds: backend._gpuDeviceIds
+
+    readonly property var gpuUsageValues: {
+        backend._gpuUsageTick;
+        var map = {};
+        for (var i = 0; i < gpuUsageInstantiator.count; i++) {
+            var s = gpuUsageInstantiator.objectAt(i);
+            if (!s)
+                continue;
+            var m = /^gpu\/(gpu\d+)\/usage$/.exec(String(s.sensorId));
+            if (m && s.status === Sensors.Sensor.Ready && typeof s.value === "number" && !isNaN(s.value))
+                map[m[1]] = s.value;
+        }
+        var out = [];
+        for (var j = 0; j < backend._gpuDeviceIds.length; j++) {
+            // Key by the full device suffix ("gpu/gpu0" → "gpu0") to match the
+            // map keys above ("gpu0") — a bare digit ("0") never matches.
+            var n = /^gpu\/(gpu\d+)$/.exec(backend._gpuDeviceIds[j]);
+            var v = n ? map[n[1]] : undefined;
+            out.push(v !== undefined ? v : NaN);
+        }
+        return out;
+    }
+
+    readonly property var gpuTempValues: {
+        backend._gpuTempTick;
+        var map = {};
+        for (var i = 0; i < gpuTempInstantiator.count; i++) {
+            var s = gpuTempInstantiator.objectAt(i);
+            if (!s)
+                continue;
+            var m = /^gpu\/(gpu\d+)\/temperature$/.exec(String(s.sensorId));
+            if (m && s.status === Sensors.Sensor.Ready && typeof s.value === "number" && !isNaN(s.value))
+                map[m[1]] = s.value;
+        }
+        var out = [];
+        for (var j = 0; j < backend._gpuDeviceIds.length; j++) {
+            var n = /^gpu\/(gpu\d+)$/.exec(backend._gpuDeviceIds[j]);
+            var v = n ? map[n[1]] : undefined;
+            out.push(v !== undefined ? v : NaN);
+        }
+        return out;
+    }
+
+    // Per-device tooltip detail, aligned to gpuDeviceIds — the same merge as
+    // `gpuDetail` but per device: usage/temp come from the per-device ring
+    // sensors above, model/power/clock from GpuDetailSensors.details, VRAM
+    // from the aggregate detail (ksysguard exposes no per-device VRAM leaves).
+    readonly property var gpuDetails: {
+        var extras = gpuDetailSensors.details;
+        var agg = gpuDetailSensors.detail;
+        var usages = backend.gpuUsageValues;
+        var temps = backend.gpuTempValues;
+        var out = [];
+        for (var i = 0; i < backend._gpuDeviceIds.length; i++) {
+            var e = extras && extras[i] ? extras[i] : {};
+            out.push({
+                "model": e.model,
+                "usagePercent": usages[i],
+                "vramUsedBytes": agg ? agg.vramUsedBytes : undefined,
+                "vramTotalBytes": agg ? agg.vramTotalBytes : undefined,
+                "tempC": temps[i],
+                "powerW": e.powerW,
+                "clockMhz": e.clockMhz
+            });
+        }
+        return out;
+    }
+
     // Plasma has no per-process VRAM source — empty list keeps the surface uniform.
     readonly property var gpuProcesses: []
 
@@ -188,6 +277,17 @@ Item {
 
     DiskIoSampler {
         id: diskIoSampler
+    }
+
+    // ── Network throughput ring ──────────────────────────────────────
+    // Same surface as diskIo; the network/all/{download,upload} sensor reads
+    // live in the NetIoSampler child (subscribed only while active). Download
+    // maps to readBps, upload to writeBps so split mode is "down left, up right".
+    property alias netIoSamplingActive: netIoSampler.active
+    readonly property var netIo: netIoSampler.io
+
+    NetIoSampler {
+        id: netIoSampler
     }
 
     // ── Disk partitions (multi-ring) ─────────────────────────────────

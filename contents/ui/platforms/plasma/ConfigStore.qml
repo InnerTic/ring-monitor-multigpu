@@ -37,6 +37,13 @@ Item {
     readonly property bool mergeCpuTemp: Plasmoid.configuration.mergeCpuTemp
     readonly property bool mergeGpuTemp: Plasmoid.configuration.mergeGpuTemp
     readonly property bool splitDiskIo: Plasmoid.configuration.splitDiskIo
+    // `=== true` (not a raw read) so a pre-net widget schema that hasn't
+    // materialised the key yet reads false instead of undefined (QML rejects
+    // assigning undefined to a typed bool with a warning).
+    readonly property bool splitNet: Plasmoid.configuration.splitNet === true
+    // Same guard for the newer splitGpuDevices key (predates the net-meter
+    // schema) — a widget upgraded from an older package reads false.
+    readonly property bool splitGpuDevices: Plasmoid.configuration.splitGpuDevices === true
 
     // ── Appearance group ────────────────────────────────────────────
     readonly property string orientation: Plasmoid.configuration.orientation

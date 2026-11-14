@@ -22,7 +22,9 @@ import org.kde.ksysguard.sensors as Sensors
 //                  Sensor subscription so the daemon pushes nothing while
 //                  no tooltip is up.
 // Surface (forwarded by MetricsBackend):
-//   detail (readonly property var) - {model, vramUsedBytes, vramTotalBytes, powerW, clockMhz}
+//   details (readonly property var) - per-device {model, powerW, clockMhz},
+//                                     aligned to gpuDeviceIds (split-GPU mode)
+//   detail  (readonly property var) - {model, vramUsedBytes, vramTotalBytes, powerW, clockMhz}
 
 Item {
     id: gpuDetail
@@ -90,10 +92,31 @@ Item {
         return fallback;
     }
 
-    // Detail object for the GPU tooltip. Reading _tick first makes every
-    // field a reactive dependency so the binding re-evaluates whenever any
-    // sensor value changes. readonly property var (not a function) so the
-    // MetricsBackend binding tracks it and stays live.
+    // Per-device model/power/clock, aligned to gpuDeviceIds — the split-GPU
+    // rings read this via MetricsBackend.gpuDetails. VRAM stays aggregate-only
+    // (ksysguard has no per-device VRAM leaves), so it is merged there rather
+    // than here. Reading _tick first makes every device sensor a reactive
+    // dependency; readonly property var (not a function) keeps the binding live.
+    readonly property var details: {
+        gpuDetail._tick;
+        var out = [];
+        for (var i = 0; i < deviceInst.count; i++) {
+            var d = deviceInst.objectAt(i);
+            if (!d)
+                continue;
+            out.push({
+                "model": (d.nameSensor.status === Sensors.Sensor.Ready && d.nameSensor.value) ? String(d.nameSensor.value) : undefined,
+                "powerW": _num(d.powerSensor, undefined),
+                "clockMhz": _num(d.clockSensor, undefined)
+            });
+        }
+        return out;
+    }
+
+    // Detail object for the single-panel GPU tooltip (issue #71): aggregate
+    // VRAM + the first Ready device's model/power/clock. Derived from
+    // `details` so both tooltip paths share one per-device read. Reading
+    // `details` (reactive on _tick) keeps this binding live too.
     readonly property var detail: {
         gpuDetail._tick;
 
@@ -102,22 +125,19 @@ Item {
         var vramUsed = _num(vramUsedSensor, undefined);
         var vramTotal = _num(vramTotalSensor, undefined);
 
-        // Per-device fields: scan delegates for the first Ready reading.
-        // undefined when no device is Ready yet — buildStatRows skips the row.
+        // First Ready device's model/power/clock. undefined when no device
+        // is Ready yet — buildStatRows skips the row.
         var powerW = undefined;
         var clockMhz = undefined;
         var model = undefined;
-
-        for (var i = 0; i < deviceInst.count; i++) {
-            var d = deviceInst.objectAt(i);
-            if (!d)
-                continue;
-            if (powerW === undefined && d.powerSensor.status === Sensors.Sensor.Ready)
-                powerW = _num(d.powerSensor, undefined);
-            if (clockMhz === undefined && d.clockSensor.status === Sensors.Sensor.Ready)
-                clockMhz = _num(d.clockSensor, undefined);
-            if (model === undefined && d.nameSensor.status === Sensors.Sensor.Ready && d.nameSensor.value)
-                model = String(d.nameSensor.value);
+        var ds = gpuDetail.details;
+        for (var i = 0; i < ds.length; i++) {
+            if (powerW === undefined && ds[i].powerW !== undefined)
+                powerW = ds[i].powerW;
+            if (clockMhz === undefined && ds[i].clockMhz !== undefined)
+                clockMhz = ds[i].clockMhz;
+            if (model === undefined && ds[i].model !== undefined)
+                model = ds[i].model;
         }
 
         return {

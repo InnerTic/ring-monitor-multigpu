@@ -25,6 +25,8 @@ Platform.PlaceholderKCM {
     property alias cfg_mergeCpuTemp: body.mergeCpuTemp
     property alias cfg_mergeGpuTemp: body.mergeGpuTemp
     property alias cfg_splitDiskIo: body.splitDiskIo
+    property alias cfg_splitNet: body.splitNet
+    property alias cfg_splitGpuDevices: body.splitGpuDevices
     property alias cfg_tempUnit: body.tempUnit
 
     // ColorPicker is platform-specific (Plasma wraps KQuickControls.ColorButton);
