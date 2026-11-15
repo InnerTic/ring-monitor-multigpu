@@ -8,6 +8,13 @@ Clean 270° ring gauges driven by KSysGuard sensors, themed via the
 current Plasma color scheme. Built from scratch as a learning project
 for QML/Qt Quick.
 
+> **Fork note:** this repository is a modified version of
+> [manuacl/ring-monitor](https://github.com/manuacl/ring-monitor), kept as a
+> personal build with extra multi-GPU / multi-resource monitoring. The
+> upstream project is licensed GPL-3.0-or-later; original copyright notices
+> are preserved. See [Modifications in this fork](#modifications-in-this-fork)
+> and [Tested hardware](#tested-hardware).
+
 ## Metrics
 
 - **CPU** — usage (with optional per-core concentric inner rings) and temperature
@@ -31,6 +38,43 @@ usage ring; the unit follows your locale (°C / °F).
   on GitHub (can be turned off in settings).
 - **Standalone build** — a native Qt/QML binary for non-KDE desktops
   ([see below](#standalone-non-kde-desktops)).
+
+## Modifications in this fork
+
+Local changes on top of upstream, aimed at seeing more system state at a
+glance (less tooltip hovering) on multi-GPU machines:
+
+- **Dual GPU monitoring** — an enabled GPU expands into one ring per card
+  (`gpu0`, `gpu1`, …) instead of a single aggregate ring, each with its own
+  usage + temperature split.
+- **Used VRAM at a glance** — each GPU ring nests a thin inner ring with the
+  card's used-VRAM percentage, labelled `VRAM N%` above the GPU label.
+- **Network meter** — download/upload ring (optionally split into halves),
+  matching the disk-I/O ring.
+- **Combined RAM + swap** — swap nests inside the RAM ring as an inner ring
+  and the separate swap ring is dropped, so both are visible in one gauge.
+- **Split-GPU defaults on** — the per-card rings are enabled by default in
+  this build.
+
+These changes were developed for personal use; they are not upstream and may
+diverge from it. Further modifications may be added independently of the
+original project.
+
+### Tested hardware
+
+Developed and tested on a mixed dual-NVIDIA system (two different
+architectures — Ampere and Pascal):
+
+| GPU | Model | VRAM |
+| --- | --- | --- |
+| GPU 0 | NVIDIA GeForce RTX 3060 | 12 GB |
+| GPU 1 | NVIDIA Tesla P40 | 24 GB |
+
+Both cards are monitored simultaneously. Testing on this hardware does not
+establish compatibility with all GPU vendors or configurations; per-GPU
+discovery comes from KSysGuard's `gpu/gpuN/*` sensors on Plasma, and the
+standalone build still samples a single GPU. Reports from AMD/Intel users
+are welcome.
 
 ## Install
 
