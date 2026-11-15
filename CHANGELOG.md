@@ -12,6 +12,28 @@ user-facing only.
 
 ## [Unreleased]
 
+## [0.15.0-multigpu.1] — 2026-11-14
+
+First modified release of this fork, based on upstream
+[v0.15.0](https://github.com/manuacl/ring-monitor/releases/tag/v0.15.0) by
+manuacl.
+
+### Added
+
+- **Per-GPU rings** — with the GPU meter enabled, each card (`gpu0`, `gpu1`, …) gets its own usage + temperature ring instead of one aggregate ring.
+- **Used VRAM at a glance** — every GPU ring nests a thin inner ring for the card's used-VRAM percentage, labelled `VRAM N%` above the GPU label.
+- **Network meter** — download/upload ring, optionally split into halves like disk I/O.
+- **Combined RAM + swap** — swap nests inside the RAM ring; the separate swap ring is removed.
+
+### Changed
+
+- Split-GPU rings are enabled by default in this build.
+
+### Technical
+
+- Plasma reads per-device `gpu/gpuN/usedVram` / `totalVram` (ksystemstats exposes no percentage leaf, so the percentage is computed as used/total). The standalone build still samples a single GPU and only reports VRAM while GPU detail sampling (tooltip) is active.
+- Config keys: `splitGpuDevices`, `mergeRamSwap`, `splitNet`, `splitDiskIo`; no toggle for the VRAM ring.
+
 ## [0.15.0] — 2026-06-17
 
 ### Added

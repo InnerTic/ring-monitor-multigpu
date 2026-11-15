@@ -17,6 +17,8 @@ for QML/Qt Quick.
 > [Modifications in this fork](#modifications-in-this-fork) and
 > [Tested hardware](#tested-hardware).
 
+![This fork's layout: per-GPU rings with nested VRAM, combined RAM+swap and a network ring](docs/images/ring-monitor-multigpu.png)
+
 ## Metrics
 
 - **CPU** — usage (with optional per-core concentric inner rings) and temperature
@@ -45,8 +47,6 @@ usage ring; the unit follows your locale (°C / °F).
 
 Local changes on top of upstream, aimed at seeing more system state at a
 glance (less tooltip hovering) on multi-GPU machines:
-
-![This fork's layout: per-GPU rings with nested VRAM, combined RAM+swap and a network ring](docs/images/ring-monitor-multigpu.png)
 
 - **Dual GPU monitoring** — an enabled GPU expands into one ring per card
   (`gpu0`, `gpu1`, …) instead of a single aggregate ring, each with its own
