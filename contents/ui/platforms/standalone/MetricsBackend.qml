@@ -240,6 +240,14 @@ Item {
     // call evaluates once and freezes (core/CLAUDE.md § "Reactive argless data").
     readonly property var gpuDetail: gpuSampler.gpuDetail
     readonly property var gpuProcesses: gpuSampler.gpuProcesses
+    // Used VRAM percentage for the GPU ring's inner ring. VRAM bytes are only
+    // sampled while the GPU detail gate (tooltip hover) is open — NVML's
+    // memory query lives on the detailed path — so this is NaN (inner ring
+    // hidden) otherwise rather than forcing the expensive detail/process pass
+    // on every tick. gpuVramValues stays empty: standalone samples a single
+    // GPU and has no per-device split.
+    readonly property real gpuVramPercent: gpuDetail ? Catalog.vramPercent(gpuDetail.vramUsedBytes, gpuDetail.vramTotalBytes) : NaN
+    readonly property var gpuVramValues: []
 
     property var _prev: null  // {all, cores} from the previous /proc/stat sample
     property real _aggregateUsage: 0

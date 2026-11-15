@@ -208,6 +208,22 @@ GridLayout {
             // GPU tooltip arming covers both the aggregate ring and every
             // per-GPU usage ring from the split.
             readonly property bool _gpuArmed: ringDelegate.modelData === "gpu" || ringDelegate._isGpuUsage
+            // Used VRAM as a thin inner ring (0-100) for GPU usage rings:
+            // per-device when splitGpuDevices is on, the aggregate otherwise.
+            // [] hides it (non-GPU ring, warm-up, or no reading yet).
+            readonly property var _vramValues: {
+                if (!ringDelegate._gpuArmed || content.metrics.loading)
+                    return [];
+                var pct;
+                if (ringDelegate.modelData === "gpu") {
+                    pct = content.metrics.gpuVramPercent;
+                } else {
+                    var idx = Catalog.gpuIndexFor(ringDelegate.modelData);
+                    var vals = content.metrics.gpuVramValues || [];
+                    pct = (idx >= 0 && idx < vals.length) ? vals[idx] : NaN;
+                }
+                return isFinite(pct) ? [pct] : [];
+            }
             // Throughput ring (disk I/O + network): a raw byte/s rate, not a %.
             // The backend exposes the snapshot via the `diskIo` / `netIo`
             // properties {readBps, writeBps, combinedBps, readPercent,
@@ -274,7 +290,15 @@ GridLayout {
             Layout.minimumWidth: 80
             Layout.minimumHeight: 80
 
-            label: ringDelegate._ramSwapValues.length > 0 ? qsTr("RAM\nSWAP") : Catalog.labelFor(modelData)
+            // Second label line: used VRAM (GPU rings only) sits directly
+            // above the GPU label, centred under the usage/temp readouts.
+            label: {
+                if (ringDelegate._ramSwapValues.length > 0)
+                    return qsTr("RAM\nSWAP");
+                if (ringDelegate._vramValues.length > 0)
+                    return "VRAM " + Math.round(ringDelegate._vramValues[0]) + "%\n" + Catalog.labelFor(modelData);
+                return Catalog.labelFor(modelData);
+            }
             // During loading every ring sweeps to 100% — a "warming
             // up" visual cue. Once metrics.loading flips false (first
             // ksysguard tick lands), values animate down to actuals
@@ -327,7 +351,7 @@ GridLayout {
                     return _io ? DiskIo.formatRateUnit(_rateSplit ? _io.readBps : _io.combinedBps) : "B/s";
                 return _isTemp && _tempInfo ? _tempInfo.unit : "%";
             }
-            nestedValues: modelData === "cpu" && content.configStore.showCpuCores ? content.metrics.coreValues : []
+            nestedValues: modelData === "cpu" && content.configStore.showCpuCores ? content.metrics.coreValues : ringDelegate._vramValues
             // Equal-thickness concentric rings for the selected disk
             // partitions ([] for every other ring → normal single arc).
             equalValues: ringDelegate._ramSwapValues.length > 0 ? ringDelegate._ramSwapValues : _diskValues

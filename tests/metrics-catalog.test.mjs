@@ -479,6 +479,24 @@ test('tempToPercent: degenerate range (max <= min) → 0', () => {
     assert.equal(Catalog.tempToPercent(50, 90, 30), 0);
 });
 
+test('vramPercent: used/total bytes → percent', () => {
+    assert.equal(Catalog.vramPercent(2e9, 8e9), 25);
+    assert.equal(Catalog.vramPercent(0, 8e9), 0);
+    assert.equal(Catalog.vramPercent(8e9, 8e9), 100);
+});
+
+test('vramPercent: missing/zero total or bad used → NaN (ring hidden)', () => {
+    assert.ok(Number.isNaN(Catalog.vramPercent(1e9, 0)));
+    assert.ok(Number.isNaN(Catalog.vramPercent(1e9, undefined)));
+    assert.ok(Number.isNaN(Catalog.vramPercent(undefined, 8e9)));
+    assert.ok(Number.isNaN(Catalog.vramPercent(-1, 8e9)));
+    assert.ok(Number.isNaN(Catalog.vramPercent(NaN, 8e9)));
+});
+
+test('vramPercent: clamps above 100% (sensor drift / overcommit)', () => {
+    assert.equal(Catalog.vramPercent(9e9, 8e9), 100);
+});
+
 // ── Display unit resolution + °C → °F conversion ────────────────────────
 // Sensor stays Celsius; only the *displayed* number converts (last hop, MainContent).
 

@@ -385,6 +385,19 @@ function convertTemp(celsius, mode) {
     return { value: celsius, unit: unit };
 }
 
+// Used VRAM as a 0-100 percent of total, for the thin inner ring nested
+// inside each GPU ring. Bytes in, NaN out on a missing/zero total or a
+// negative used reading (sensor still warming up) so callers can hide the
+// inner ring instead of drawing a bogus 0%.
+function vramPercent(usedBytes, totalBytes) {
+    var used = Number(usedBytes);
+    var total = Number(totalBytes);
+    if (!isFinite(used) || !isFinite(total) || total <= 0 || used < 0) return NaN;
+    var pct = used * 100 / total;
+    if (pct > 100) return 100;
+    return pct;
+}
+
 // Return a new array with `id` toggled on/off. Preserves the order of the
 // other ids and appends `id` at the end when enabling.
 function toggleEnabled(currentIds, id, on) {
@@ -443,6 +456,7 @@ if (typeof module !== "undefined" && module.exports) {
         sensorIdFor: sensorIdFor,
         tempSensorIdFor: tempSensorIdFor,
         tempToPercent: tempToPercent,
+        vramPercent: vramPercent,
         resolveTempMode: resolveTempMode,
         convertTemp: convertTemp,
         toggleEnabled: toggleEnabled,

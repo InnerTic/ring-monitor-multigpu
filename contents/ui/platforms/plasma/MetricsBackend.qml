@@ -218,10 +218,48 @@ Item {
         return out;
     }
 
+    // Used VRAM per device (0-100), aligned to gpuDeviceIds — the thin inner
+    // ring nested inside each GPU usage ring. Built from the per-device
+    // gpu/gpuN/usedVram + totalVram sensors (ksysguard has no per-device
+    // percentage leaf, so the ratio is computed here). NaN while a device
+    // hasn't reported yet → MainContent hides the inner ring.
+    readonly property var gpuVramValues: {
+        backend._gpuVramTick;
+        var usedMap = {};
+        var totalMap = {};
+        var i, s, m;
+        for (i = 0; i < gpuVramUsedInstantiator.count; i++) {
+            s = gpuVramUsedInstantiator.objectAt(i);
+            m = s ? /^gpu\/(gpu\d+)\/usedVram$/.exec(String(s.sensorId)) : null;
+            if (m && s.status === Sensors.Sensor.Ready && typeof s.value === "number" && !isNaN(s.value))
+                usedMap[m[1]] = s.value;
+        }
+        for (i = 0; i < gpuVramTotalInstantiator.count; i++) {
+            s = gpuVramTotalInstantiator.objectAt(i);
+            m = s ? /^gpu\/(gpu\d+)\/totalVram$/.exec(String(s.sensorId)) : null;
+            if (m && s.status === Sensors.Sensor.Ready && typeof s.value === "number" && !isNaN(s.value))
+                totalMap[m[1]] = s.value;
+        }
+        var out = [];
+        for (i = 0; i < backend._gpuDeviceIds.length; i++) {
+            var n = /^gpu\/(gpu\d+)$/.exec(backend._gpuDeviceIds[i]);
+            out.push(n ? Catalog.vramPercent(usedMap[n[1]], totalMap[n[1]]) : NaN);
+        }
+        return out;
+    }
+    // Aggregate used-VRAM percentage for the merged single GPU ring (split
+    // GPU rings off, or only one device). Same sensors the tooltip uses.
+    readonly property real gpuVramPercent: {
+        backend._gpuVramTick;
+        var used = gpuAllVramUsed.status === Sensors.Sensor.Ready ? gpuAllVramUsed.value : NaN;
+        var total = gpuAllVramTotal.status === Sensors.Sensor.Ready ? gpuAllVramTotal.value : NaN;
+        return Catalog.vramPercent(used, total);
+    }
+
     // Per-device tooltip detail, aligned to gpuDeviceIds — the same merge as
     // `gpuDetail` but per device: usage/temp come from the per-device ring
     // sensors above, model/power/clock from GpuDetailSensors.details, VRAM
-    // from the aggregate detail (ksysguard exposes no per-device VRAM leaves).
+    // from the aggregate detail (kept aggregate for the tooltip's byte rows).
     readonly property var gpuDetails: {
         var extras = gpuDetailSensors.details;
         var agg = gpuDetailSensors.detail;
@@ -419,6 +457,19 @@ Item {
         id: gpuAllSensor
         sensorId: "gpu/all/usage"
     }
+    // Aggregate VRAM bytes for the merged GPU ring's inner ring.
+    Sensors.Sensor {
+        id: gpuAllVramUsed
+        sensorId: "gpu/all/usedVram"
+        onValueChanged: backend._gpuVramTick++
+        onStatusChanged: backend._gpuVramTick++
+    }
+    Sensors.Sensor {
+        id: gpuAllVramTotal
+        sensorId: "gpu/all/totalVram"
+        onValueChanged: backend._gpuVramTick++
+        onStatusChanged: backend._gpuVramTick++
+    }
 
     // ── SensorTreeModel-driven discovery (multi-arity sensors) ──────
     //
@@ -575,6 +626,34 @@ Item {
         }
         onObjectAdded: backend._gpuUsageTick++
         onObjectRemoved: backend._gpuUsageTick++
+    }
+
+    // Per-device VRAM bytes for the GPU inner ring — one Sensor pair per
+    // discovered gpu/gpuN base, driven by the same discovery model as usage.
+    property int _gpuVramTick: 0
+    Instantiator {
+        id: gpuVramUsedInstantiator
+        model: backend._gpuDeviceIds
+        delegate: Sensors.Sensor {
+            required property string modelData
+            sensorId: modelData + "/usedVram"
+            onValueChanged: backend._gpuVramTick++
+            onStatusChanged: backend._gpuVramTick++
+        }
+        onObjectAdded: backend._gpuVramTick++
+        onObjectRemoved: backend._gpuVramTick++
+    }
+    Instantiator {
+        id: gpuVramTotalInstantiator
+        model: backend._gpuDeviceIds
+        delegate: Sensors.Sensor {
+            required property string modelData
+            sensorId: modelData + "/totalVram"
+            onValueChanged: backend._gpuVramTick++
+            onStatusChanged: backend._gpuVramTick++
+        }
+        onObjectAdded: backend._gpuVramTick++
+        onObjectRemoved: backend._gpuVramTick++
     }
 
     // ── Disk partitions ──────────────────────────────────────────────

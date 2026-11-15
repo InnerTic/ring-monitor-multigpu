@@ -34,6 +34,7 @@ Item {
         property bool mergeCpuTemp: false
         property bool mergeGpuTemp: false
         property bool mergeRamSwap: false
+        property bool splitGpuDevices: false
         property string tempUnit: "celsius"
         property real textOpacity: 1.0
         property real trackOpacity: 0.2
@@ -85,6 +86,11 @@ Item {
         // formatValue closure. Zero default = sensors not yet delivered.
         property real memTotalKb: 0
         property real memUsedKb: 0
+        // GPU VRAM inner-ring surface: aggregate percent + per-device array
+        // aligned to gpuDeviceIds (NaN/[] = no reading → ring hidden).
+        property real gpuVramPercent: NaN
+        property var gpuVramValues: []
+        property var gpuDeviceIds: []
     }
 
     QtObject {
@@ -123,6 +129,10 @@ Item {
             metricsStub.processSamplingActive = false;
             metricsStub.memTotalKb = 0;
             metricsStub.memUsedKb = 0;
+            metricsStub.gpuVramPercent = NaN;
+            metricsStub.gpuVramValues = [];
+            metricsStub.gpuDeviceIds = [];
+            configStub.splitGpuDevices = false;
             content._cpuTooltipHovered = false;
             content._memTooltipHovered = false;
         }
@@ -297,6 +307,54 @@ Item {
             configStub.mergeRamSwap = false;
             tryCompare(content, "count", 3);
             compare(content.enabledList, ["cpu", "ram", "swap"]);
+        }
+
+        // ── GPU VRAM inner ring ──────────────────────────────────────
+
+        function _ringFor(id) {
+            for (var i = 0; i < content.children.length; i++) {
+                var c = content.children[i];
+                if (c && c.modelData === id)
+                    return c;
+            }
+            return null;
+        }
+
+        function test_gpuVram_aggregateRing_nestsOneValue() {
+            configStub.enabledMetrics = "gpu";
+            configStub.metricOrder = "gpu";
+            metricsStub.gpuVramPercent = 42;
+            tryCompare(content, "count", 1);
+            var ring = _ringFor("gpu");
+            verify(ring, "gpu ring delegate exists");
+            compare(ring.nestedValues.length, 1);
+            fuzzyCompare(ring.nestedValues[0], 42, 0.01);
+            compare(ring.label, "VRAM 42%\nGPU");
+        }
+
+        function test_gpuVram_perDeviceRings_useAlignedValues() {
+            configStub.enabledMetrics = "gpu";
+            configStub.metricOrder = "gpu";
+            configStub.splitGpuDevices = true;
+            metricsStub.gpuDeviceIds = ["gpu/gpu0", "gpu/gpu1"];
+            metricsStub.availableMetrics = ["gpu"];
+            metricsStub.gpuVramValues = [10, 20];
+            tryCompare(content, "count", 2);
+            var g0 = _ringFor("gpu0");
+            var g1 = _ringFor("gpu1");
+            verify(g0 && g1, "per-GPU ring delegates exist");
+            compare(g0.nestedValues.length, 1);
+            compare(g1.nestedValues.length, 1);
+            fuzzyCompare(g0.nestedValues[0], 10, 0.01);
+            fuzzyCompare(g1.nestedValues[0], 20, 0.01);
+        }
+
+        function test_gpuVram_nonnGpuRing_hasNoNestedValue() {
+            configStub.enabledMetrics = "ram";
+            configStub.metricOrder = "ram";
+            metricsStub.gpuVramPercent = 42;
+            tryCompare(content, "count", 1);
+            compare(_ringFor("ram").nestedValues.length, 0);
         }
 
         // ── Process sampling gate: delegate-destroy-while-hovered (#70) ──
