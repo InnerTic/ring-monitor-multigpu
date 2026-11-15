@@ -9,11 +9,13 @@ current Plasma color scheme. Built from scratch as a learning project
 for QML/Qt Quick.
 
 > **Fork note:** this repository is a modified version of
-> [manuacl/ring-monitor](https://github.com/manuacl/ring-monitor), kept as a
-> personal build with extra multi-GPU / multi-resource monitoring. The
-> upstream project is licensed GPL-3.0-or-later; original copyright notices
-> are preserved. See [Modifications in this fork](#modifications-in-this-fork)
-> and [Tested hardware](#tested-hardware).
+> [manuacl/ring-monitor](https://github.com/manuacl/ring-monitor) by manuacl,
+> based on upstream **v0.15.0**. It is kept as a personal build with extra
+> multi-GPU / multi-resource monitoring. The upstream project is licensed
+> GPL-3.0-or-later; original copyright notices are preserved, and this fork's
+> changes are released under the same license. See
+> [Modifications in this fork](#modifications-in-this-fork) and
+> [Tested hardware](#tested-hardware).
 
 ## Metrics
 
@@ -56,9 +58,16 @@ glance (less tooltip hovering) on multi-GPU machines:
 - **Split-GPU defaults on** — the per-card rings are enabled by default in
   this build.
 
+New settings behind these (Plasma config keys): `splitGpuDevices` (per-card
+GPU rings), `mergeRamSwap` (combined RAM+swap ring), `splitNet` (split
+download/upload), and `splitDiskIo` for the disk-I/O ring. The per-GPU VRAM
+ring has no toggle — it is shown whenever a GPU usage ring is.
+
 These changes were developed for personal use; they are not upstream and may
 diverge from it. Further modifications may be added independently of the
-original project.
+original project. Upstream remains the canonical project — bug reports about
+the base applet belong there, and the changes here could be offered back as
+a pull request.
 
 ### Tested hardware
 
